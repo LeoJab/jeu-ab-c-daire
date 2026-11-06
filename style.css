@@ -101,6 +101,9 @@ input:focus { outline: 3px solid var(--yellow); outline-offset: 1px; }
 .tchip.on { background: var(--yellow); box-shadow: 2px 2px 0 var(--ink); transform: translateY(-1px); }
 .tchip:disabled { cursor: default; opacity: .8; }
 .customrow { display: flex; gap: 6px; margin-bottom: 14px; }
+.chooser { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.chooser .ov-title { margin: 0; }
+#thCtl { margin-top: 4px; }
 .opts { display: flex; flex-wrap: wrap; gap: 16px; }
 .seg { display: inline-flex; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden; }
 .seg button { border: 0; background: #fff; color: var(--ink); padding: 7px 12px; cursor: pointer; border-right: 3px solid var(--ink); }

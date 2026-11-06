@@ -13,6 +13,7 @@
   const INTRO_MS = 2800;            // petit délai de mise en scène au 1er tour
   const CONTEST_PENALTY = 4000;
   const VOTE_MS = 12000;
+  const THEME_MS = 25000;           // temps pour choisir le thème avant passage auto
   const MAX_PLAYERS = 12;
   const THEMES = [
     ['🐾', 'Animaux'], ['🌍', 'Pays'], ['🏙️', 'Villes'], ['🍎', 'Fruits & légumes'],
@@ -133,6 +134,7 @@
     const el = now() - rx;
     if (S.phase === 'play') return S.turnLeft - el;
     if (S.phase === 'vote' && S.vote) return S.vote.left - el;
+    if (S.phase === 'theme') return S.themeLeft - el;
     return 0;
   }
   const turnTime = c => c.timeMs + (HARD.includes(LETTERS[Math.min(c.li, 25)]) ? HARD_BONUS : 0);
@@ -338,6 +340,7 @@
     const c = structuredClone(S);
     if (S.phase === 'play') c.turnLeft = remain();
     if (S.phase === 'vote' && c.vote) c.vote.left = remain();
+    if (S.phase === 'theme') c.themeLeft = remain();
     c.ev = null;
     fn(c);
     c.v = S.v + 1;
@@ -346,7 +349,6 @@
   function lobbyState(prev) {
     return {
       v: (prev ? prev.v : 0) + 1, phase: 'lobby',
-      theme: prev ? prev.theme : pick(THEMES)[1],
       timeMs: prev ? prev.timeMs : 15000, lives: prev ? prev.lives : 3,
       players: [], used: [], li: 0, ev: null
     };
@@ -383,17 +385,42 @@
   function hostStart() {
     if (!isHost() || !S || S.phase !== 'lobby') return;
     const list = shuffle(hubPlayers.slice(0, MAX_PLAYERS).map(p => ({ id: p.id, name: p.name, lives: S.lives, words: 0, gone: false, out: false })));
-    const st = {
-      v: S.v + 1, phase: 'play', partie: roomCode + '-' + Date.now().toString(36),
-      theme: S.theme, timeMs: S.timeMs, lives: S.lives, practice: list.length < 2,
-      players: list, turn: 0, li: 0, fails: 0, used: [], last: null, vote: null, winners: [], ev: { k: 'start' }
-    };
-    st.turnMs = turnTime(st); st.turnLeft = st.turnMs + INTRO_MS;
-    commit(st);
+    commit({
+      v: S.v + 1, phase: 'theme', partie: roomCode + '-' + Date.now().toString(36),
+      theme: null, timeMs: S.timeMs, lives: S.lives, practice: list.length < 2,
+      players: list, turn: 0, li: 0, fails: 0, used: [], last: null, vote: null, winners: [],
+      chooser: pick(list).id, passed: [], themeLeft: THEME_MS, ev: { k: 'chooser' }
+    });
+  }
+  function hostBegin(theme, auto) {
+    mut(c => {
+      c.phase = 'play'; c.theme = theme; c.turn = 0; c.li = 0;
+      c.turnMs = turnTime(c); c.turnLeft = c.turnMs + INTRO_MS;
+      c.ev = { k: 'start', by: c.chooser, auto: !!auto };
+      delete c.themeLeft;
+    });
+  }
+  function hostPass() {
+    if (S.phase !== 'theme') return;
+    const old = S.chooser;
+    const passed = S.passed.concat(old);
+    const cand = S.players.filter(p => !passed.includes(p.id) && !p.gone);
+    if (!cand.length) { hostBegin(pick(THEMES)[1], true); return; }
+    mut(c => {
+      c.passed = passed; c.chooser = pick(cand).id; c.themeLeft = THEME_MS;
+      c.ev = { k: 'pass', by: old };
+    });
   }
   function hostHandle(d, from) {
     if (!S) return;
     switch (d.t) {
+      case 'theme': {
+        if (S.phase !== 'theme' || from.id !== S.chooser || typeof d.theme !== 'string') break;
+        const t = clean(d.theme).slice(0, 30);
+        if (t.length >= 2) hostBegin(t, false);
+        break;
+      }
+      case 'pass': if (S.phase === 'theme' && from.id === S.chooser) hostPass(); break;
       case 'word': if (typeof d.word === 'string') hostWord(from.id, d.word); break;
       case 'giveup': if (S.phase === 'play' && curPlayer() && curPlayer().id === from.id) hostLoseLife('giveup'); break;
       case 'contest': hostContest(from.id); break;
@@ -526,8 +553,17 @@
     const c = center();
     const who = nameOf(ev.by);
     switch (ev.k) {
+      case 'chooser':
+        sfx.start(); banner('🎲 TIRAGE AU SORT !', 'big'); FX.confetti(W / 2, H / 3, 50);
+        setTimeout(() => { if (S && S.phase === 'theme') banner('👉 ' + nameOf(S.chooser).toUpperCase()); }, 900);
+        break;
+      case 'pass':
+        sfx.bad(); banner('⏭️ ' + who + ' PASSE !'); flash('#19c3ff');
+        setTimeout(() => { if (S && S.phase === 'theme') { banner('👉 ' + nameOf(S.chooser).toUpperCase()); sfx.pop(); } }, 900);
+        break;
       case 'start':
         sfx.start(); banner('🔤 ' + S.theme.toUpperCase(), 'big');
+        if (ev.auto) setTimeout(() => banner('🎲 THÈME AU HASARD'), 500);
         FX.firework(W * .3, H * .3); FX.firework(W * .7, H * .3);
         setTimeout(() => { if (S && S.phase === 'play') { banner('C\'EST PARTI !', 'go'); sfx.pop(); } }, 1300);
         break;
@@ -577,14 +613,15 @@
 
   /* ------------------------------ Affichage ------------------------------ */
   function route() {
-    const scr = !room ? 'home' : (!S || S.phase === 'lobby') ? 'lobby' : 'game';
-    ['home', 'lobby', 'game'].forEach(n => $('#sc-' + n).classList.toggle('hidden', n !== scr));
+    const scr = !room ? 'home' : (!S || S.phase === 'lobby') ? 'lobby' : S.phase === 'theme' ? 'theme' : 'game';
+    ['home', 'lobby', 'theme', 'game'].forEach(n => $('#sc-' + n).classList.toggle('hidden', n !== scr));
     $('#btnLeave').classList.toggle('hidden', !room);
     if (scr !== 'game') { $('#voteOverlay').classList.add('hidden'); $('#endOverlay').classList.add('hidden'); }
   }
   function render() {
     if (!room) return renderHome();
     if (!S || S.phase === 'lobby') return renderLobby();
+    if (S.phase === 'theme') return renderTheme();
     renderGame();
   }
   function setHomeErr(t, info) {
@@ -598,22 +635,31 @@
 
   function renderLobby() {
     $('#roomCode').textContent = roomCode;
-    const host = isHost(), cfg = S || { theme: '…', timeMs: 15000, lives: 3 };
+    const host = isHost(), cfg = S || { timeMs: 15000, lives: 3 };
     syncList($('#lobPlayers'), hubPlayers, p => p.id,
       () => { const d = h('div', 'lcard', '<span class="av"></span><span class="lname"></span>'); return d; },
       (n, p) => {
         setAvatar(n.firstChild, p.id, p.name, avatarOf(p.id));
         n.lastChild.textContent = (hubPlayers[0] && hubPlayers[0].id === p.id ? '👑 ' : '') + p.name + (p.id === me.id ? ' (toi)' : '');
       });
-    $('#curTheme').textContent = cfg.theme;
-    $$('#themeGrid .tchip').forEach(b => { b.classList.toggle('on', b.dataset.t === cfg.theme); b.disabled = !host; });
     $$('#segTime button').forEach(b => { b.classList.toggle('on', +b.dataset.v === cfg.timeMs); b.disabled = !host; });
     $$('#segLives button').forEach(b => { b.classList.toggle('on', +b.dataset.v === cfg.lives); b.disabled = !host; });
-    $('#customTheme').disabled = !host; $('#btnCustom').disabled = !host; $('#btnDice').disabled = !host;
     $('#btnStart').classList.toggle('hidden', !host);
     $('#waitHost').classList.toggle('hidden', host);
     const n = hubPlayers.length;
     $('#startHint').textContent = n < 2 ? 'Seul dans la salle ? Tu peux t\'entraîner (partie non classée).' : n + ' joueurs prêts à se battre ⚔️';
+  }
+
+  function renderTheme() {
+    const ch = S.players.find(p => p.id === S.chooser) || { id: S.chooser, name: '?' };
+    const mine = ch.id === me.id;
+    setAvatar($('#thAv'), ch.id, ch.name, avatarOf(ch.id));
+    $('#thTitle').textContent = mine ? '🎲 À toi de choisir le thème !' : '🎲 ' + ch.name + ' choisit le thème…';
+    $('#thSub').textContent = S.passed.length ? 'Ont passé : ' + S.passed.map(nameOf).join(', ') : (mine ? 'Pas d\'idée ? Clique sur « Passer ».' : 'Patience, ça arrive…');
+    $('#thCtl').classList.toggle('hidden', !mine);
+    $('#thWait').classList.toggle('hidden', mine);
+    $('#thWait').textContent = iAmPlayer() ? 'Si ' + ch.name + ' passe, un autre joueur sera tiré au sort.' : '👀 Tu regardes la partie';
+    if (!mine) $('#customTheme').blur();
   }
 
   function flashMsg(t, err) { msgText = t; msgErr = !!err; msgUntil = now() + 2600; renderMsg(); setTimeout(renderMsg, 2700); }
@@ -758,6 +804,15 @@
   /* ------------------------------ Boucle d'horloge ------------------------------ */
   function tick() {
     if (!S) return;
+    if (S.phase === 'theme') {
+      const r = remain();
+      $('#thBar').style.width = clamp(r / THEME_MS, 0, 1) * 100 + '%';
+      if (isHost() && actedV !== S.v) {
+        const ch = S.players.find(p => p.id === S.chooser);
+        if (r <= 0 || (ch && ch.gone && THEME_MS - r > 3000)) { actedV = S.v; hostPass(); }
+      }
+      return;
+    }
     if (S.phase === 'play') {
       const r = remain(), frac = clamp(r / S.turnMs, 0, 1);
       $('#ringFg').style.strokeDashoffset = String(RING * (1 - frac));
@@ -834,13 +889,14 @@
       safe(() => navigator.clipboard.writeText(roomCode));
       $('#btnCopy').textContent = '✅ Copié !'; setTimeout(() => { $('#btnCopy').textContent = '📋 Copier'; }, 1400);
     };
-    $('#themeGrid').addEventListener('click', e => { const b = e.target.closest('.tchip'); if (b) hostCfg({ theme: b.dataset.t }); });
+    $('#themeGrid').addEventListener('click', e => { const b = e.target.closest('.tchip'); if (b && S && S.chooser === me.id) send({ t: 'theme', theme: b.dataset.t }); });
+    $('#btnPass').onclick = () => { if (S && S.chooser === me.id) send({ t: 'pass' }); };
     $('#segTime').addEventListener('click', e => { const b = e.target.closest('button'); if (b) hostCfg({ timeMs: +b.dataset.v }); });
     $('#segLives').addEventListener('click', e => { const b = e.target.closest('button'); if (b) hostCfg({ lives: +b.dataset.v }); });
-    const setCustom = () => { const v = clean($('#customTheme').value).slice(0, 30); if (v) { hostCfg({ theme: v }); $('#customTheme').value = ''; } };
+    const setCustom = () => { const v = clean($('#customTheme').value).slice(0, 30); if (v.length >= 2 && S && S.chooser === me.id) { send({ t: 'theme', theme: v }); $('#customTheme').value = ''; } };
     $('#btnCustom').onclick = setCustom;
     $('#customTheme').addEventListener('keydown', e => { if (e.key === 'Enter') setCustom(); });
-    $('#btnDice').onclick = () => { sfx.pop(); hostCfg({ theme: pick(THEMES)[1] }); };
+    $('#btnDice').onclick = () => { if (S && S.chooser === me.id) { sfx.pop(); send({ t: 'theme', theme: pick(THEMES)[1] }); } };
     $('#btnStart').onclick = () => { ac(); hostStart(); };
     $('#btnAgain').onclick = hostAgain;
     $('#wordForm').addEventListener('submit', e => { e.preventDefault(); submitWord(); });

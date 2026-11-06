@@ -56,13 +56,7 @@
       </div>
 
       <div class="card">
-        <h3>🎯 Thème : <span id="curTheme" class="curtheme">…</span></h3>
-        <div id="themeGrid" class="themegrid"></div>
-        <div class="customrow">
-          <input id="customTheme" maxlength="30" autocomplete="off" placeholder="Ton propre thème…">
-          <button id="btnCustom" class="btn small" type="button">OK</button>
-          <button id="btnDice" class="btn small" type="button" title="Thème au hasard">🎲</button>
-        </div>
+        <h3>⚙️ Réglages <span class="note">— le thème sera choisi par un joueur tiré au sort</span></h3>
         <div class="opts">
           <div><div class="mini">⏳ Temps par tour</div>
             <div class="seg" id="segTime"><button type="button" data-v="10000">10 s</button><button type="button" data-v="15000">15 s</button><button type="button" data-v="20000">20 s</button><button type="button" data-v="30000">30 s</button></div></div>
@@ -75,6 +69,24 @@
         <button id="btnStart" class="btn primary big hidden" type="button">🚀 Lancer la partie</button>
         <div id="waitHost" class="waithost hidden">⏳ L'hôte choisit le thème et lance la partie…</div>
         <div id="startHint" class="note"></div>
+      </div>
+    </section>
+
+    <!-- CHOIX DU THÈME -->
+    <section id="sc-theme" class="screen lobby hidden">
+      <div class="card">
+        <div class="chooser"><span id="thAv" class="av big"></span><div><div id="thTitle" class="ov-title"></div><div id="thSub" class="note"></div></div></div>
+        <div class="vbar"><i id="thBar"></i></div>
+        <div id="thCtl">
+          <div id="themeGrid" class="themegrid"></div>
+          <div class="customrow">
+            <input id="customTheme" maxlength="30" autocomplete="off" placeholder="Ton propre thème…">
+            <button id="btnCustom" class="btn small" type="button">OK</button>
+            <button id="btnDice" class="btn small" type="button" title="Thème au hasard">🎲</button>
+          </div>
+          <button id="btnPass" class="btn danger" type="button">⏭️ Passer (pas d'idée)</button>
+        </div>
+        <div id="thWait" class="note hidden"></div>
       </div>
     </section>
 
@@ -150,7 +162,7 @@
 <div id="modalRules" class="overlay hidden">
   <div class="card ovcard rules">
     <h2>❓ Règles de l'Abécédaire</h2>
-    <p><b>🎯 But</b><br>Un thème, l'alphabet. À tour de rôle, chacun donne un mot du thème qui commence par la lettre en cours : A, puis B, puis C… jusqu'à Z. Le dernier debout gagne !</p>
+    <p><b>🎯 But</b><br>Un joueur tiré au sort choisit le thème (il peut « Passer » s'il n'a pas d'idée : un autre est tiré au sort). Ensuite, à tour de rôle, chacun donne un mot du thème qui commence par la lettre en cours : A, puis B, puis C… jusqu'à Z. Le dernier debout gagne !</p>
     <p><b>🕹️ Comment jouer</b><br>Quand c'est ton tour, tape ton mot et valide (Entrée). Tu as quelques secondes (+5 s sur les lettres dures K, Q, W, X, Y, Z). Un mot déjà dit ne compte pas.</p>
     <p><b>💔 Perdre une vie</b><br>Temps écoulé ou « Je sèche » = −1 vie. Plus de vie = éliminé. Deux ratés d'affilée sur la même lettre : elle devient « maudite » et on passe à la suivante.</p>
     <p><b>🚩 Contester</b><br>Un mot bidon ? Appuie sur 🚩 pendant le tour suivant : les autres votent. Mot refusé = l'auteur perd une vie et la lettre est rejouée. Mot validé = tu perds 4 s si c'était ton tour.</p>

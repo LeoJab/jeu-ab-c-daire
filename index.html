@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Abécédaire — ChadGangGames</title>
+<link rel="stylesheet" href="style.css">
+<script src="/_sdk.js"></script>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<canvas id="fx"></canvas>
+<div id="flash"></div>
+<div id="banners"></div>
+
+<div id="app">
+  <header class="top">
+    <div class="logo">🔤 <span>Abécédaire</span></div>
+    <div class="top-btns">
+      <button id="btnRules" class="btn small" type="button">❓ Règles</button>
+      <button id="btnSound" class="btn small" type="button" title="Son">🔊</button>
+      <button id="btnLeave" class="btn small hidden" type="button" title="Quitter la salle">🚪 Quitter</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ACCUEIL -->
+    <section id="sc-home" class="screen home">
+      <h1 class="title"><span>A</span><span>B</span><span>C</span><small>un thème, 26 lettres, zéro pitié</small></h1>
+      <div class="card homecard">
+        <div id="profile" class="profile hidden"><span id="hmeAv" class="av big"></span><span id="hmeName" class="hme-name"></span></div>
+        <div id="pseudoRow" class="field">
+          <label for="pseudo">Ton pseudo</label>
+          <input id="pseudo" name="pseudo" maxlength="20" autocomplete="off" placeholder="Ton pseudo">
+          <p class="note">Mode hors hub : ouvre le jeu dans plusieurs onglets pour jouer ensemble.</p>
+        </div>
+        <button id="btnCreate" class="btn primary big" type="button">🎮 Créer une salle</button>
+        <div class="or">ou rejoins tes potes</div>
+        <div class="joinrow">
+          <input id="code" name="code" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
+          <button id="btnJoin" class="btn" type="button">Rejoindre</button>
+        </div>
+        <div id="homeErr" class="err"></div>
+      </div>
+    </section>
+
+    <!-- SALLE D'ATTENTE -->
+    <section id="sc-lobby" class="screen lobby hidden">
+      <div class="card">
+        <div class="codebox">
+          <div><div class="mini">Code de la salle</div><div id="roomCode" class="roomcode">----</div></div>
+          <button id="btnCopy" class="btn small" type="button">📋 Copier</button>
+        </div>
+        <h3>👥 Joueurs</h3>
+        <div id="lobPlayers" class="lobplayers"></div>
+      </div>
+
+      <div class="card">
+        <h3>🎯 Thème : <span id="curTheme" class="curtheme">…</span></h3>
+        <div id="themeGrid" class="themegrid"></div>
+        <div class="customrow">
+          <input id="customTheme" maxlength="30" autocomplete="off" placeholder="Ton propre thème…">
+          <button id="btnCustom" class="btn small" type="button">OK</button>
+          <button id="btnDice" class="btn small" type="button" title="Thème au hasard">🎲</button>
+        </div>
+        <div class="opts">
+          <div><div class="mini">⏳ Temps par tour</div>
+            <div class="seg" id="segTime"><button type="button" data-v="10000">10 s</button><button type="button" data-v="15000">15 s</button><button type="button" data-v="20000">20 s</button><button type="button" data-v="30000">30 s</button></div></div>
+          <div><div class="mini">❤️ Vies</div>
+            <div class="seg" id="segLives"><button type="button" data-v="1">1</button><button type="button" data-v="3">3</button><button type="button" data-v="5">5</button></div></div>
+        </div>
+      </div>
+
+      <div class="startbox">
+        <button id="btnStart" class="btn primary big hidden" type="button">🚀 Lancer la partie</button>
+        <div id="waitHost" class="waithost hidden">⏳ L'hôte choisit le thème et lance la partie…</div>
+        <div id="startHint" class="note"></div>
+      </div>
+    </section>
+
+    <!-- PARTIE -->
+    <section id="sc-game" class="screen game hidden">
+      <div class="gbar"><span id="gTheme" class="chip theme"></span><span id="gMode" class="chip"></span></div>
+      <div id="ribbon" class="ribbon"></div>
+
+      <div class="stage">
+        <div id="gPlayers" class="players"></div>
+
+        <div class="center">
+          <div class="turnwho"><span id="twAv" class="av"></span><span id="twText"></span></div>
+          <div id="letterWrap" class="letterwrap">
+            <svg class="ring" viewBox="0 0 100 100"><circle class="ring-bg" r="46" cx="50" cy="50"/><circle id="ringFg" class="ring-fg" r="46" cx="50" cy="50"/></svg>
+            <div id="bigLetter" class="letter">A</div>
+            <div id="count" class="count">15</div>
+          </div>
+          <div id="lastWord" class="lastword empty"><span id="lwAv" class="av sm"></span><span id="lwText"></span></div>
+
+          <form id="wordForm" class="wordform" autocomplete="off">
+            <input id="wordInput" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Ton mot…" disabled>
+            <button id="btnSend" class="btn primary" type="submit" disabled>Valider</button>
+          </form>
+          <div id="msgLine" class="msgline"></div>
+          <div class="actions">
+            <button id="btnContest" class="btn small danger hidden" type="button">🚩 Contester</button>
+            <button id="btnGiveup" class="btn small hidden" type="button">😵 Je sèche</button>
+          </div>
+          <div id="emotes" class="emotes">
+            <button type="button" data-e="🔥">🔥</button><button type="button" data-e="😂">😂</button><button type="button" data-e="😱">😱</button><button type="button" data-e="👏">👏</button><button type="button" data-e="💀">💀</button><button type="button" data-e="🤔">🤔</button>
+          </div>
+        </div>
+
+        <aside class="logbox"><div class="mini">📜 Mots joués</div><div id="gLog" class="log"></div></aside>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- VOTE -->
+<div id="voteOverlay" class="overlay hidden">
+  <div class="card ovcard">
+    <div id="vTitle" class="ov-title"></div>
+    <div id="vWord" class="vword"></div>
+    <div id="vSub" class="note"></div>
+    <div id="vVoters" class="voters"></div>
+    <div class="vbar"><i id="vBar"></i></div>
+    <div id="vBtns" class="vbtns">
+      <button id="btnYes" class="btn primary" type="button">✅ Mot valide</button>
+      <button id="btnNo" class="btn danger" type="button">❌ Refusé</button>
+    </div>
+    <div id="vWait" class="note hidden"></div>
+  </div>
+</div>
+
+<!-- FIN DE PARTIE -->
+<div id="endOverlay" class="overlay hidden">
+  <div class="card ovcard">
+    <div id="eTitle" class="ov-title"></div>
+    <span id="eAv" class="av huge"></span>
+    <div id="eSub" class="note"></div>
+    <div id="eList" class="elist"></div>
+    <div class="vbtns">
+      <button id="btnAgain" class="btn primary hidden" type="button">🔁 Rejouer</button>
+      <div id="waitAgain" class="note hidden">En attente de l'hôte pour rejouer…</div>
+      <button id="btnQuit" class="btn" type="button">🚪 Quitter</button>
+    </div>
+  </div>
+</div>
+
+<!-- RÈGLES -->
+<div id="modalRules" class="overlay hidden">
+  <div class="card ovcard rules">
+    <h2>❓ Règles de l'Abécédaire</h2>
+    <p><b>🎯 But</b><br>Un thème, l'alphabet. À tour de rôle, chacun donne un mot du thème qui commence par la lettre en cours : A, puis B, puis C… jusqu'à Z. Le dernier debout gagne !</p>
+    <p><b>🕹️ Comment jouer</b><br>Quand c'est ton tour, tape ton mot et valide (Entrée). Tu as quelques secondes (+5 s sur les lettres dures K, Q, W, X, Y, Z). Un mot déjà dit ne compte pas.</p>
+    <p><b>💔 Perdre une vie</b><br>Temps écoulé ou « Je sèche » = −1 vie. Plus de vie = éliminé. Deux ratés d'affilée sur la même lettre : elle devient « maudite » et on passe à la suivante.</p>
+    <p><b>🚩 Contester</b><br>Un mot bidon ? Appuie sur 🚩 pendant le tour suivant : les autres votent. Mot refusé = l'auteur perd une vie et la lettre est rejouée. Mot validé = tu perds 4 s si c'était ton tour.</p>
+    <p><b>🏆 Victoire</b><br>Le dernier joueur en vie gagne. Si l'alphabet est terminé, ceux qui ont le plus de vies gagnent (égalité possible). Seul dans la salle : partie d'entraînement, non classée.</p>
+    <p class="note">👀 Rejoindre en cours de partie = spectateur. Le chrono ne s'arrête pas pendant que tu lis ces règles !</p>
+    <button id="btnCloseRules" class="btn primary big" type="button">J'ai compris !</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

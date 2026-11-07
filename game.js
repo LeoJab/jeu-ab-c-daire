@@ -137,6 +137,23 @@
     if (S.phase === 'theme') return S.themeLeft - el;
     return 0;
   }
+  // Mémoire de toute la partie (mode Infini) : empreintes de 7 caractères des mots déjà dits.
+  const SEEN_MAX = 7000;   // 1000 mots, pour rester sous les 12 Ko d'un message du hub
+  function hash7(n) {
+    let x = 0x811c9dc5;
+    for (let i = 0; i < n.length; i++) { x ^= n.charCodeAt(i); x = Math.imul(x, 0x01000193); }
+    return (x >>> 0).toString(36).padStart(7, '0');
+  }
+  function seenHas(seen, n) {
+    const k = hash7(n);
+    for (let i = 0; i + 7 <= seen.length; i += 7) if (seen.startsWith(k, i)) return true;
+    return false;
+  }
+  function seenRemove(seen, n) {
+    const k = hash7(n);
+    for (let i = seen.length - 7; i >= 0; i -= 7) if (seen.startsWith(k, i)) return seen.slice(0, i) + seen.slice(i + 7);
+    return seen;
+  }
   const infinite = c => !!c && c.mode === 'infini';
   const letterAt = c => infinite(c) ? LETTERS[c.li % 26] : LETTERS[Math.min(c.li, 25)];
   const posAt = c => infinite(c) ? c.li % 26 : c.li;                 // position dans l'alphabet (0-26)
@@ -363,7 +380,7 @@
     const w = clean(raw), n = norm(w);
     if (n.length < 1) return 'Écris un mot !';
     if (n[0] !== letterAt(st).toLowerCase()) return 'Ça doit commencer par ' + letterAt(st) + ' !';
-    if (st.used.some(u => norm(u.w) === n)) return 'Déjà utilisé !';
+    if (st.used.some(u => norm(u.w) === n) || (st.seen && seenHas(st.seen, n))) return 'Déjà utilisé !';
     return null;
   }
   function nextTurn(c) {
@@ -442,7 +459,11 @@
     mut(c => {
       const p = c.players[c.turn], idx = c.li;
       c.used.push({ l: LETTERS[idx % 26], w, by: id, i: idx });
-      if (infinite(c)) { const minI = (Math.floor(idx / 26) - 1) * 26; c.used = c.used.filter(u => u.i >= minI); }
+      if (infinite(c)) {
+        c.seen = ((c.seen || '') + hash7(norm(w))).slice(-SEEN_MAX);
+        const minI = Math.min(Math.floor(idx / 26) * 26, idx - 13);      // tour en cours + 14 derniers mots (affichage)
+        c.used = c.used.filter(u => u.i >= minI);
+      }
       p.words++;
       c.last = { w, by: id, li: idx, contested: false };
       c.li++; c.fails = 0;
@@ -494,6 +515,7 @@
         const a = c.players.find(p => p.id === v.by);
         const li = c.last ? c.last.li : c.li - 1;
         c.used = c.used.filter(u => !(u.w === v.w && u.by === v.by));
+        if (c.seen) c.seen = seenRemove(c.seen, norm(v.w));
         if (a) { a.words = Math.max(0, a.words - 1); a.lives--; if (a.lives <= 0) { a.lives = 0; a.out = true; } }
         c.li = li; c.fails = 0; c.last = null;
         c.ev = { k: 'refused', by: v.by, w: v.w, out: !!(a && a.out), yes, no };

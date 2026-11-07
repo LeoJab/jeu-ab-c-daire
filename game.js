@@ -137,7 +137,11 @@
     if (S.phase === 'theme') return S.themeLeft - el;
     return 0;
   }
-  const turnTime = c => c.timeMs + (HARD.includes(LETTERS[Math.min(c.li, 25)]) ? HARD_BONUS : 0);
+  const infinite = c => !!c && c.mode === 'infini';
+  const letterAt = c => infinite(c) ? LETTERS[c.li % 26] : LETTERS[Math.min(c.li, 25)];
+  const posAt = c => infinite(c) ? c.li % 26 : c.li;                 // position dans l'alphabet (0-26)
+  const lapAt = c => infinite(c) ? Math.floor(c.li / 26) : 0;        // numéro du tour d'alphabet
+  const turnTime = c => c.timeMs + (HARD.includes(letterAt(c)) ? HARD_BONUS : 0);
 
   /* ------------------------------ Avatars ------------------------------ */
   function setAvatar(node, id, name, url) {
@@ -349,7 +353,7 @@
   function lobbyState(prev) {
     return {
       v: (prev ? prev.v : 0) + 1, phase: 'lobby',
-      timeMs: prev ? prev.timeMs : 15000, lives: prev ? prev.lives : 3,
+      timeMs: prev ? prev.timeMs : 15000, lives: prev ? prev.lives : 3, mode: prev && prev.mode ? prev.mode : 'classique',
       players: [], used: [], li: 0, ev: null
     };
   }
@@ -357,8 +361,8 @@
   /* ------------------------------ Logique de jeu (hôte) ------------------------------ */
   function checkWord(raw, st) {
     const w = clean(raw), n = norm(w);
-    if (n.length < 2) return 'Trop court !';
-    if (n[0] !== LETTERS[st.li].toLowerCase()) return 'Ça doit commencer par ' + LETTERS[st.li] + ' !';
+    if (n.length < 1) return 'Écris un mot !';
+    if (n[0] !== letterAt(st).toLowerCase()) return 'Ça doit commencer par ' + letterAt(st) + ' !';
     if (st.used.some(u => norm(u.w) === n)) return 'Déjà utilisé !';
     return null;
   }
@@ -372,7 +376,7 @@
   }
   function checkEnd(c) {
     const alive = c.players.filter(p => !p.out).length;
-    return c.li >= 26 || alive <= (c.practice ? 0 : 1);
+    return (!infinite(c) && c.li >= 26) || alive <= (c.practice ? 0 : 1);
   }
   function finish(c) {
     c.phase = 'end'; c.vote = null;
@@ -387,7 +391,7 @@
     const list = shuffle(hubPlayers.slice(0, MAX_PLAYERS).map(p => ({ id: p.id, name: p.name, lives: S.lives, words: 0, gone: false, out: false })));
     commit({
       v: S.v + 1, phase: 'theme', partie: roomCode + '-' + Date.now().toString(36),
-      theme: null, timeMs: S.timeMs, lives: S.lives, practice: list.length < 2,
+      theme: null, timeMs: S.timeMs, lives: S.lives, mode: S.mode || 'classique', practice: list.length < 2,
       players: list, turn: 0, li: 0, fails: 0, used: [], last: null, vote: null, winners: [],
       chooser: pick(list).id, passed: [], themeLeft: THEME_MS, ev: { k: 'chooser' }
     });
@@ -437,12 +441,13 @@
     const w = clean(raw);
     mut(c => {
       const p = c.players[c.turn], idx = c.li;
-      c.used.push({ l: LETTERS[idx], w, by: id });
+      c.used.push({ l: LETTERS[idx % 26], w, by: id, i: idx });
+      if (infinite(c)) { const minI = (Math.floor(idx / 26) - 1) * 26; c.used = c.used.filter(u => u.i >= minI); }
       p.words++;
       c.last = { w, by: id, li: idx, contested: false };
       c.li++; c.fails = 0;
-      c.ev = { k: 'ok', by: id, w, i: idx, fast: elapsed < 4000 };
-      if (c.li >= 26) finish(c); else nextTurn(c);
+      c.ev = { k: 'ok', by: id, w, i: idx % 26, fast: elapsed < 4000, lap: infinite(c) && c.li % 26 === 0 ? c.li / 26 : 0 };
+      if (!infinite(c) && c.li >= 26) finish(c); else nextTurn(c);
     });
   }
   function hostLoseLife(kind) {
@@ -571,6 +576,7 @@
         sfx.ok(); FX.confetti(c.x, c.y, ev.by === me.id ? 120 : 70); shock(c.x, c.y, '#ffd426');
         { const cell = $('#ribbon').children[ev.i]; if (cell) replay(cell, 'just'); }
         replay($('#lastWord'), 'pop');
+        if (ev.lap) { setTimeout(() => { banner('🔁 TOUR ' + ev.lap + ' TERMINÉ !', 'big'); sfx.win(); FX.firework(W * .25, H * .35); FX.firework(W * .75, H * .35); FX.rain(); }, 500); setTimeout(() => banner('ON REPART EN A !', 'go'), 1500); }
         if (ev.fast) { banner('⚡ ÉCLAIR !'); FX.sparks(c.x, c.y, '#19c3ff', 50); }
         break;
       case 'timeout': case 'giveup':
@@ -643,6 +649,7 @@
         n.lastChild.textContent = (hubPlayers[0] && hubPlayers[0].id === p.id ? '👑 ' : '') + p.name + (p.id === me.id ? ' (toi)' : '');
       });
     $$('#segTime button').forEach(b => { b.classList.toggle('on', +b.dataset.v === cfg.timeMs); b.disabled = !host; });
+    $$('#segMode button').forEach(b => { b.classList.toggle('on', b.dataset.v === (cfg.mode || 'classique')); b.disabled = !host; });
     $$('#segLives button').forEach(b => { b.classList.toggle('on', +b.dataset.v === cfg.lives); b.disabled = !host; });
     $('#btnStart').classList.toggle('hidden', !host);
     $('#waitHost').classList.toggle('hidden', host);
@@ -671,7 +678,7 @@
     else if (S.phase === 'end') t = '';
     else if (S.phase === 'vote') t = '🗳️ Les joueurs votent…';
     else if (!iAmPlayer()) t = '👀 Tu regardes la partie';
-    else if (myTurn()) t = 'Un mot « ' + S.theme + ' » en ' + LETTERS[S.li] + ' !';
+    else if (myTurn()) t = 'Un mot « ' + S.theme + ' » en ' + letterAt(S) + ' !';
     else if (curPlayer()) t = '✍️ ' + curPlayer().name + ' réfléchit…';
     m.textContent = t; m.classList.toggle('err', err);
   }
@@ -679,17 +686,17 @@
   function renderGame() {
     const st = S, cur = curPlayer(), play = st.phase === 'play';
     $('#gTheme').textContent = '🎯 ' + st.theme;
-    $('#gMode').textContent = st.practice ? '🏋️ Entraînement' : '👥 ' + st.players.length + ' joueurs';
+    $('#gMode').textContent = (infinite(st) ? '♾️ Infini · ' : '') + (st.practice ? '🏋️ Entraînement' : '👥 ' + st.players.length + ' joueurs') + (infinite(st) && st.li >= 26 ? ' · tour ' + (lapAt(st) + 1) : '');
 
     // ruban A–Z
     const rb = $('#ribbon');
     if (!rb.children.length) LETTERS.forEach(l => { const c = h('div', 'cell'); c.textContent = l; rb.appendChild(c); });
-    const done = {}; st.used.forEach(u => { done[u.l] = u.w; });
+    const done = {}, lap = lapAt(st); st.used.forEach(u => { if (!infinite(st) || Math.floor(u.i / 26) === lap) done[u.l] = u.w; });
     LETTERS.forEach((l, i) => {
       const c = rb.children[i], d = l in done;
       c.classList.toggle('done', d);
-      c.classList.toggle('cur', i === st.li && st.phase !== 'end');
-      c.classList.toggle('skip', !d && i < st.li);
+      c.classList.toggle('cur', i === posAt(st) && st.phase !== 'end');
+      c.classList.toggle('skip', !d && i < posAt(st));
       c.title = d ? done[l] : '';
     });
 
@@ -708,7 +715,7 @@
       });
 
     // lettre
-    const L = LETTERS[Math.min(st.li, 25)], bl = $('#bigLetter');
+    const L = letterAt(st), bl = $('#bigLetter');
     if (bl.dataset.l !== L) { bl.dataset.l = L; bl.textContent = L; replay(bl, 'flip'); }
 
     // qui joue
@@ -757,7 +764,7 @@
     ov.classList.remove('hidden');
     $('#vTitle').textContent = '🚩 ' + nameOf(v.contester) + ' conteste !';
     $('#vWord').textContent = '« ' + v.w + ' »';
-    $('#vSub').textContent = 'de ' + nameOf(v.by) + ' — thème : ' + S.theme + ' — lettre ' + (S.last ? LETTERS[S.last.li] : '');
+    $('#vSub').textContent = 'de ' + nameOf(v.by) + ' — thème : ' + S.theme + ' — lettre ' + (S.last ? LETTERS[S.last.li % 26] : '');
     const vs = voters().map(id => ({ id }));
     syncList($('#vVoters'), vs, x => x.id,
       () => h('div', 'vv', '<span class="av"></span><em></em>'),
@@ -785,8 +792,10 @@
       $('#eTitle').textContent = '🤝 Égalité : ' + win.map(p => p.name).join(' & ');
       $('#eAv').style.display = ''; setAvatar($('#eAv'), win[0].id, win[0].name, avatarOf(win[0].id));
     } else { $('#eTitle').textContent = '💀 Personne n\'a survécu…'; $('#eAv').style.display = 'none'; }
-    const n = S.used.length;
-    $('#eSub').textContent = n >= 26 ? '🎉 Alphabet complet ! Thème : ' + S.theme : n + ' lettre' + (n > 1 ? 's' : '') + ' sur 26 — thème : ' + S.theme + (S.practice ? ' (entraînement, non classé)' : '');
+    const n = S.players.reduce((a, p) => a + p.words, 0);
+    $('#eSub').textContent = infinite(S)
+      ? '♾️ ' + n + ' mot' + (n > 1 ? 's' : '') + ' en ' + (Math.floor(S.li / 26) + (S.li % 26 ? 1 : 0)) + ' tour(s) d\'alphabet — thème : ' + S.theme + (S.practice ? ' (entraînement, non classé)' : '')
+      : (S.li >= 26 ? '🎉 Alphabet complet ! Thème : ' + S.theme : n + ' lettre' + (n > 1 ? 's' : '') + ' sur 26 — thème : ' + S.theme + (S.practice ? ' (entraînement, non classé)' : ''));
     const rank = [...S.players].sort((a, b) => (S.winners.includes(b.id) - S.winners.includes(a.id)) || (!a.out - !b.out) || (b.lives - a.lives) || (b.words - a.words));
     syncList($('#eList'), rank, p => p.id,
       () => h('div', 'erow', '<span class="av"></span><span class="ename"></span><small></small>'),
@@ -892,6 +901,7 @@
     $('#themeGrid').addEventListener('click', e => { const b = e.target.closest('.tchip'); if (b && S && S.chooser === me.id) send({ t: 'theme', theme: b.dataset.t }); });
     $('#btnPass').onclick = () => { if (S && S.chooser === me.id) send({ t: 'pass' }); };
     $('#segTime').addEventListener('click', e => { const b = e.target.closest('button'); if (b) hostCfg({ timeMs: +b.dataset.v }); });
+    $('#segMode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) hostCfg({ mode: b.dataset.v }); });
     $('#segLives').addEventListener('click', e => { const b = e.target.closest('button'); if (b) hostCfg({ lives: +b.dataset.v }); });
     const setCustom = () => { const v = clean($('#customTheme').value).slice(0, 30); if (v.length >= 2 && S && S.chooser === me.id) { send({ t: 'theme', theme: v }); $('#customTheme').value = ''; } };
     $('#btnCustom').onclick = setCustom;
